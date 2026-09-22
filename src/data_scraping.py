@@ -1,7 +1,16 @@
+import os
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import time
+
+
+def createFolders(ano):
+    '''Cria pastas necessarias caso elas ainda nâo existam.'''
+    caminho_world = f'data/raw/{ano}/world'
+    caminho_movies = f'data/raw/{ano}/movies'
+    os.makedirs(caminho_world, exist_ok=True)
+    os.makedirs(caminho_movies, exist_ok=True)
 
 
 def getTablesURL(url, mode):
@@ -101,7 +110,12 @@ def getBoxOfficeYear(ano):
 
 
 if __name__ == '__main__':
-    # Usando como exemplo o ano de 2026
-    getBoxOfficeYear(2026)
+    # Cria pastas de data necessarias:
+    caminho_raw = 'data/raw'
+    caminho_processed = 'data/processed'
+    os.makedirs(caminho_raw, exist_ok=True)
+    os.makedirs(caminho_raw, exist_ok=True)
 
-    
+    # Usando como exemplo o ano de 2026:
+    createFolders(2026)
+    getBoxOfficeYear(2026)
