@@ -1,3 +1,6 @@
+# pastas com arquivos de extração (podem ser extensos)
+data/raw
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
