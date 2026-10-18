@@ -2,6 +2,7 @@ import os
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 import pandas as pd
+import random
 import time
 
 
@@ -26,38 +27,43 @@ def createDriver():
     return driver
 
 
-def getTNMovieTable(driver, ano):
-    url = f'https://www.the-numbers.com/box-office-records/domestic/all-movies/cumulative/released-in-{ano}'
-    lista_tabela = []
+def getTNMovieTable(driver):
+    lista_links = []
+    lista_dados = []
 
-    try:
-        driver.get(url)
-        time.sleep(5)
+    for i in range(2026, 1999, -1):
+        print(f'> Buscando dados da tabela do ano de {i}: ', end=' ')
+        url = f'https://www.the-numbers.com/box-office-records/domestic/all-movies/cumulative/released-in-{i}'
+        try:
+            driver.get(url)
+            time.sleep(random.uniform(1.25, 1.8))
 
-        linhas = driver.find_elements(By.XPATH, '//table//tr')
-        for linha in linhas[1:]:
-            lista_linha = []
-        
-            link_filme = linha.find_element(By.XPATH, './td[2]//a').get_attribute('href')
-            data_filme = linha.find_element(By.XPATH, './td[3]').get_attribute('textContent').replace('\xa0', ' ')
-            genero_filme = linha.find_element(By.XPATH, './td[5]').get_attribute('textContent')
-
-            lista_linha.append(link_filme)
-            lista_linha.append(data_filme)
-            lista_linha.append(genero_filme)
-
-            lista_tabela.append(lista_linha)
-
-        return lista_tabela
+            linhas = driver.find_elements(By.XPATH, '//table//tr')
+            for linha in linhas[1:]:
+                lista_linha = []
             
-    except Exception as e:
-        print(f'getTNMoviesLinks::Ocorreu um erro: {e}')
+                link_filme = linha.find_element(By.XPATH, './td[2]//a').get_attribute('href')
+                data_filme = linha.find_element(By.XPATH, './td[3]').get_attribute('textContent').replace('\xa0', ' ')
+                genero_filme = linha.find_element(By.XPATH, './td[5]').get_attribute('textContent')
+
+                lista_links.append(link_filme)
+                lista_linha.append(data_filme)
+                lista_linha.append(genero_filme)
+
+                lista_dados.append(lista_linha)
+
+            print('SUCESSO!')
+                
+        except Exception as e:
+            print(f'getTNMoviesLinks::Ocorreu um erro no ano {i}: {e}')
+
+    return lista_links, lista_dados
 
 
 def getTNMovieWData(driver, link):
     try:
         driver.get(link)
-        time.sleep(3)
+        time.sleep(random.uniform(1.25, 1.8))
 
         linhas_tabela_dados = driver.find_elements(By.XPATH, '(//div[@id="box_office_chart"]//table)[4]//tr//td[3]')
 
@@ -82,7 +88,7 @@ def getTNMovieWData(driver, link):
 def getTNMovieInfo(driver, link):
     try:
         driver.get(link)
-        time.sleep(3)
+        time.sleep(random.uniform(1.25, 1.8))
 
         lista_info = []
 
@@ -166,67 +172,93 @@ def getTNMovieInfo(driver, link):
 
 
 if __name__ == '__main__':
-    # Cria pastas de data necessarias:
     caminho_raw = 'data/raw'
     caminho_processed = 'data/processed'
     os.makedirs(caminho_raw, exist_ok=True)
-    os.makedirs(caminho_raw, exist_ok=True)
+    os.makedirs(caminho_processed, exist_ok=True)
+
+    caminho_links_csv = 'data/raw/tabela_links.csv'
+    caminho_completo_csv = 'data/raw/tabela_dados_completos.csv'
 
     createFolders(2026)
     driver = createDriver()
 
     print('-' * 50)
-    print('W E B  S C R A P E R  |  The Numbers')
+    print('W E B  S C R A P E R  | The Numbers')
+    print('-' * 50)
+
+    # 1. GERENCIAMENTO DE ARQUIVOS (Se já existem, lê. Se não, busca do zero)
+    if os.path.exists(caminho_links_csv) and os.path.exists(caminho_completo_csv):
+        print('> Arquivos de checkpoint encontrados! Carregando do disco...')
+        df_links = pd.read_csv(caminho_links_csv)
+        df_completo = pd.read_csv(caminho_completo_csv)
+    else:
+        links_table, movies_table = getTNMovieTable(driver)
+
+        df_links = pd.DataFrame(links_table, columns=['link'])
+        df_dados = pd.DataFrame(movies_table, columns=['date', 'genre'])
+
+        # Tratamento de datas
+        df_dados['date'] = pd.to_datetime(df_dados['date'], errors='coerce')
+        df_dados['day'] = df_dados['date'].dt.day
+        df_dados['month'] = df_dados['date'].dt.month
+        df_dados['year'] = df_dados['date'].dt.year
+        df_dados_tratados = df_dados.drop(columns=['date'])
+
+        # Inicializa colunas vazias para as informações das páginas dos filmes
+        item_colunas = ['nome', 'tn_legs', 'domestic_share', 'domestic_bo', 'rating', 'tempo', 'producao', 
+                        'estreia_bilheteria', 'semana_2', 'semana_3', 'semana_4']
+        
+        for col in item_colunas:
+            df_dados_tratados[col] = pd.Series(dtype='object')
+
+        # Salva a estrutura inicial separada
+        df_links.to_csv(caminho_links_csv, index=False)
+        df_completo = df_dados_tratados
+        df_completo.to_csv(caminho_completo_csv, index=False)
+        print('> Estrutura inicial salva com sucesso!')
+
     print('-' * 50)
     
-    print('> Buscando dados da tabela: ', end=' ')
-    movies_table_2026 = getTNMovieTable(driver, 2026)
-    print('SUCESSO!')
-
-    colunas = ['link', 'date', 'genre']
-
-    # Salvando dados:
-    print('> Salvando dados da tabela: ', end=' ')
-    df = pd.DataFrame(movies_table_2026)
-    df.columns = colunas
-    df.to_csv('data/raw/tabela.csv', index=False)
-    print('SUCESSO!')
-    print('-' * 50)
-
+    total_filmes = len(df_links)
     item_colunas = ['nome', 'tn_legs', 'domestic_share', 'domestic_bo', 'rating', 'tempo', 'producao', 
                     'estreia_bilheteria', 'semana_2', 'semana_3', 'semana_4']
-    
-    # Coletando dados de cada filme:
-    lista_movie_info = []
-    
-    for i in range(len(df['link'])):
-            print(f'Extraindo filme {i+1:03d}/{len(df['link']):03d}: ', end=' ')
-            movie_info = getTNMovieInfo(driver, df['link'][i])
+
+    # 2. LOOP DE EXTRAÇÃO EM TEMPO REAL E RETOMADA INTELIGENTE
+    try:
+        for i in range(total_filmes):
+            if pd.notna(df_completo.loc[i, 'nome']):    # Pula linha já preenchida
+                continue
+
+            print(f'Extraindo filme {i+1:03d}/{total_filmes:03d}: ', end=' ')
+            link_atual = df_links.loc[i, 'link']
+            
+            movie_info = getTNMovieInfo(driver, link_atual)
             
             if movie_info:
-                lista_movie_info.append(movie_info)
+                df_completo.loc[i, item_colunas] = movie_info
+                df_completo.to_csv(caminho_completo_csv, index=False)
                 print('SUCESSO!')
+
             else:
-                print('FALHA (Ignorado).')
-    
-    
-    '''
-    # Testando com filme especifico:
-        movie_info = movie_info = getTNMovieInfo(driver, df['link'][47])
-        if movie_info:
-            print('deu boa')
-            lista_movie_info.append(movie_info)
-        else:
-            print('nn deu boa')
-    '''
-    
+                print('\n[X] FALHA DE COLETA DETECTADA!')
+                print('[X] Parando a execução. O progresso anterior está salvo.')
+                break
 
-    print('-' * 50)
+            # Limpeza preventiva de cookies:
+            if i > 0 and i % 150 == 0:
+                try:
+                    driver.delete_all_cookies()
+                except:
+                    pass
 
-    # Salvado dados das infos dos filmes:
-    print('> Salvando dados dos filmes: ', end=' ')
-    df_info = pd.DataFrame(lista_movie_info, columns=item_colunas)
-    df_info.to_csv('data/raw/tabela_info.csv', index=False)
-    print('Dados salvos!')
+    except Exception as e:
+        print(f'\n[!] Erro crítico na execução: {e}')
+        # Garante que o estado atual seja salvo antes de sair
+        df_completo.to_csv(caminho_completo_csv, index=False)
 
-    print('-' * 50)
+    finally:
+        driver.quit()
+        print('-' * 50)
+        print('Processo encerrado com segurança. Dados salvos em data/processed/')
+        print('-' * 50)
