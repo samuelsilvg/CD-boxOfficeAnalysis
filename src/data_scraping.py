@@ -6,14 +6,6 @@ import random
 import time
 
 
-def createFolders(ano):
-    '''Cria pastas necessarias caso elas ainda nâo existam.'''
-    caminho_world = f'data/raw/{ano}/world'
-    caminho_movies = f'data/raw/{ano}/movies'
-    os.makedirs(caminho_world, exist_ok=True)
-    os.makedirs(caminho_movies, exist_ok=True)
-
-
 def createDriver():
     '''Cria o driver padrão do Selenium com Chromium.'''
 
@@ -83,8 +75,8 @@ def getTNMovieWData(driver, link):
     except Exception as e:
         print(f'getTNMovieWData::Ocorreu um erro: {e}')
         return None, None, None
-    
-    
+
+
 def getTNMovieInfo(driver, link):
     try:
         driver.get(link)
@@ -98,6 +90,7 @@ def getTNMovieInfo(driver, link):
         tn_legs = None
         domestic_share = None
         domestic_bo = None
+        domestic_bo_original = None
         rating = None
         tempo = None
         producao = None
@@ -125,6 +118,14 @@ def getTNMovieInfo(driver, link):
             # - Bilheteria doméstica total (ajustada pela inflação)
             elif colunas[0].text == 'Infl. Adj. Dom. BO':
                 domestic_bo = colunas[1].text
+
+        linhas_tabela_finanças = driver.find_elements(By.XPATH, '//table[@id="movie_finances"]//tr')
+        for linha in linhas_tabela_finanças:
+            colunas = linha.find_elements(By.TAG_NAME, 'td')
+
+            # - Bilheteria doméstica original (sem reajuste da inflação)
+            if colunas[0].text == 'Domestic Box Office':
+                domestic_bo_original = colunas[1].text
 
 
         linhas_tabela_detalhes = driver.find_elements(By.XPATH, '//div[@id="summary"]//table[2]//tr')
@@ -155,6 +156,7 @@ def getTNMovieInfo(driver, link):
         lista_info.append(tn_legs)
         lista_info.append(domestic_share)
         lista_info.append(domestic_bo)
+        lista_info.append(domestic_bo_original)
         lista_info.append(rating)
         lista_info.append(tempo)
         lista_info.append(producao)
@@ -170,8 +172,7 @@ def getTNMovieInfo(driver, link):
         print(f'getTNMovieInfo::Ocorreu um erro: {e}')
 
 
-
-if __name__ == '__main__':
+def executarPipelineScraper():
     caminho_raw = 'data/raw'
     caminho_processed = 'data/processed'
     os.makedirs(caminho_raw, exist_ok=True)
@@ -180,7 +181,6 @@ if __name__ == '__main__':
     caminho_links_csv = 'data/raw/tabela_links.csv'
     caminho_completo_csv = 'data/raw/tabela_dados_completos.csv'
 
-    createFolders(2026)
     driver = createDriver()
 
     print('-' * 50)
@@ -206,7 +206,7 @@ if __name__ == '__main__':
         df_dados_tratados = df_dados.drop(columns=['date'])
 
         # Inicializa colunas vazias para as informações das páginas dos filmes
-        item_colunas = ['nome', 'tn_legs', 'domestic_share', 'domestic_bo', 'rating', 'tempo', 'producao', 
+        item_colunas = ['nome', 'tn_legs', 'domestic_share', 'domestic_bo', 'domestic_bo_original', 'rating', 'tempo', 'producao', 
                         'estreia_bilheteria', 'semana_2', 'semana_3', 'semana_4']
         
         for col in item_colunas:
@@ -221,7 +221,7 @@ if __name__ == '__main__':
     print('-' * 50)
     
     total_filmes = len(df_links)
-    item_colunas = ['nome', 'tn_legs', 'domestic_share', 'domestic_bo', 'rating', 'tempo', 'producao', 
+    item_colunas = ['nome', 'tn_legs', 'domestic_share', 'domestic_bo', 'domestic_bo_original', 'rating', 'tempo', 'producao', 
                     'estreia_bilheteria', 'semana_2', 'semana_3', 'semana_4']
 
     # 2. LOOP DE EXTRAÇÃO EM TEMPO REAL E RETOMADA INTELIGENTE
@@ -243,7 +243,7 @@ if __name__ == '__main__':
             else:
                 print('\n[X] FALHA DE COLETA DETECTADA!')
                 print('[X] Parando a execução. O progresso anterior está salvo.')
-                break
+                return False
 
             # Limpeza preventiva de cookies:
             if i > 0 and i % 150 == 0:
@@ -256,9 +256,23 @@ if __name__ == '__main__':
         print(f'\n[!] Erro crítico na execução: {e}')
         # Garante que o estado atual seja salvo antes de sair
         df_completo.to_csv(caminho_completo_csv, index=False)
+        return False
 
     finally:
         driver.quit()
         print('-' * 50)
         print('Processo encerrado com segurança. Dados salvos em data/processed/')
         print('-' * 50)
+
+    return True
+
+
+if __name__ == '__main__':
+    while True:
+        execucao_completa = executarPipelineScraper()
+
+        if execucao_completa:
+            break
+        else:
+            print('\n[!] Ocorreu uma pausa por erro. Reiniciando o script automaticamente em 10 segundos...\n')
+            time.sleep(10)
