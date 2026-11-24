@@ -25,6 +25,7 @@ pip install -r requirements.txt
 │   ├── analise_P3.ipynb
 │   └── analise_P4.ipynb
 ├── README.md
+├── requirements.txt
 └── src
     ├── data_scraping.py
     └── parsing.py
